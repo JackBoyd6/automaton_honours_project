@@ -4,6 +4,7 @@ using UnityEngine;
 using System.IO;
 using System;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 
 public class ScriptText : MonoBehaviour{
 	[SerializeField]
@@ -22,19 +23,21 @@ public class ScriptText : MonoBehaviour{
 
   private Scene scene;
 
-	public int getRunningLineNum(){
-		return runningLineNum;
-	}
-
 	public void setRunningLineNum(int runningLineNum){
-		////Debug.Log("running line set to " + runningLineNum);
-		int lastRunningLineNum = this.runningLineNum;
-		this.runningLineNum = runningLineNum;
-		if(lastRunningLineNum != -1)
-			lines[lastRunningLineNum].GetComponent<ScriptLine>().setHighlighted(false);
-		if(runningLineNum != -1)
-      lines[runningLineNum].GetComponent<ScriptLine>().setHighlighted(true);
-	}
+    ////Debug.Log("running line set to " + runningLineNum);
+    int lastRunningLineNum = this.runningLineNum;
+    this.runningLineNum = runningLineNum;
+    
+    if(lastRunningLineNum != -1)
+        lines[lastRunningLineNum].GetComponent<ScriptLine>().setHighlighted(false);
+    
+    if(runningLineNum != -1){
+        lines[runningLineNum].GetComponent<ScriptLine>().setHighlighted(true);
+        
+        // AUTO-SCROLL TO RUNNING LINE
+        scrollToLine(runningLineNum);
+    }
+}
 
 	// run at start of scene
 	void Start(){
@@ -353,50 +356,74 @@ public class ScriptText : MonoBehaviour{
 	}
 
 	public void backSpace(){
-		// current line has content
-		if(lines[selectedLineNum].GetComponent<ScriptLine>().getHasContent()){
-			ScriptLine scriptLine = lines[selectedLineNum].GetComponent<ScriptLine>();
-			if(scriptLine.getText().Length >= 4 && scriptLine.getText().Substring(0,4) == "func"
-					&& scriptLine.getText()[scriptLine.getText().Length - 1] == '{'){
-        String t = lines[selectedLineNum].GetComponent<ScriptLine>().getText();
-				String n = t.Substring(4,1);
-				int num = int.Parse(n);
-				takenFuncNums[num - 1] = false;
-			}
-      scriptLine.setText("");
-      scriptLine.setHasContent(false);
-			scriptLine.select();
+    
+	// current line has content
+    if(lines[selectedLineNum].GetComponent<ScriptLine>().getHasContent()){
+        ScriptLine scriptLine = lines[selectedLineNum].GetComponent<ScriptLine>();
+        
+        // Check if deleting a function declaration
+        if(scriptLine.getText().Length >= 4 && scriptLine.getText().Substring(0,4) == "func"
+                && scriptLine.getText()[scriptLine.getText().Length - 1] == '{'){
+            String t = lines[selectedLineNum].GetComponent<ScriptLine>().getText();
+            String n = t.Substring(4,1);
+            int num = int.Parse(n);
+            takenFuncNums[num - 1] = false;
+        }
+        
+        // NEW: Check if deleting a closing brace - find and validate matching pair
+        if(scriptLine.getText() == "}"){
+            // Find matching opening brace
+            int braceCount = 1;
+            int matchingLine = -1;
+            for(int i = selectedLineNum - 1; i >= 0; i--){
+                String lineText = lines[i].GetComponent<ScriptLine>().getText();
+                if(lineText == "}"){
+                    braceCount++;
+                } else if(lineText.Length > 0 && lineText[lineText.Length - 1] == '{'){
+                    braceCount--;
+                    if(braceCount == 0){
+                        matchingLine = i;
+                        break;
+                    }
+                }
+            }
+            // Optional: Log warning if no match found (shouldn't happen normally)
+            if(matchingLine == -1){
+                Debug.LogWarning("Closing brace has no matching opening brace!");
+            }
+        }
+        
+        // Clear the line
+        scriptLine.setText("");
+        scriptLine.setHasContent(false);
+        scriptLine.select();
 
-      //jump to previous line
-			if(selectedLineNum != 0){
+        //jump to previous line
+        if(selectedLineNum != 0){
+            setSelected(selectedLineNum - 1);
+            pullUpLineContent(selectedLineNum + 1);
+        } else{
+            // If deleting first line, just clear it
+            pullUpLineContent(selectedLineNum);
+        }
+
+    // current line has no content and is not the first line
+    } else if(selectedLineNum != 0){
+        // jump to previous line:
         setSelected(selectedLineNum - 1);
         pullUpLineContent(selectedLineNum + 1);
-			} else{
-				//pullUpLineContent(0);
-				//setSelected(0);
-			}
 
-		// current line has no content and is not the first line
-		} else if(selectedLineNum != 0){
-      // jump to previous line:
-      setSelected(selectedLineNum - 1);
-      pullUpLineContent(selectedLineNum + 1);
-			// jump to previous line and erase it:
-			/*lines[selectedLineNum].GetComponent<ScriptLine>().deselect();
-			selectedLineNum--;
-			lines[selectedLineNum].GetComponent<ScriptLine>().setHasContent(false);
-			lines[selectedLineNum].GetComponent<ScriptLine>().setText("");
-			lines[selectedLineNum].GetComponent<ScriptLine>().select();*/
-
-		// current line is line 0 and has no contents
-		} else {
-      pullUpLineContent(selectedLineNum);
-		}
-		refreshFollowingIndents();
+    // current line is line 0 and has no contents
+    } else {
+        pullUpLineContent(selectedLineNum);
+    }
+    
+    // CRITICAL: Always refresh indents after deletion
+    refreshFollowingIndents();
     lines[selectedLineNum].GetComponent<ScriptLine>().select();
 
     onCodeChange();
-	}
+}
 
   // refresh indents on all lines after
   private void refreshFollowingIndents(){
@@ -407,4 +434,31 @@ public class ScriptText : MonoBehaviour{
       }
     }
 	}
+	// Auto-scroll to show the running line
+private void scrollToLine(int lineNum){
+    if(lineNum < 0 || lineNum >= lines.Length){
+        return;
+    }
+    
+    // Get the ScrollRect component (you need to assign this in the inspector)
+    ScrollRect scrollRect = GetComponentInParent<ScrollRect>();
+    
+    if(scrollRect == null){
+        Debug.LogWarning("ScrollRect not found! Cannot auto-scroll.");
+        return;
+    }
+    
+    // Calculate the normalized position (0 to 1) for the scroll
+    float normalizedPosition = 1f - ((float)lineNum / (float)lines.Length);
+    
+    // Clamp between 0 and 1
+    normalizedPosition = Mathf.Clamp01(normalizedPosition);
+    
+    // Smoothly scroll to the position
+    scrollRect.verticalNormalizedPosition = normalizedPosition;
+}
+
+// Auto-scroll to show the running line
+
+
 }

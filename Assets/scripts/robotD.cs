@@ -194,14 +194,29 @@ public class robotD : MonoBehaviour {
 		}
 	}
 
-	public void moveForward(){
-		//Debug.Log("moveForward() - bot");
-		if(tileDetect(direction())){
-			// set target position to next tile in front
-			pos += new Vector3 (direction().x, direction().y, 0.0f) * 21f;
-			anim.SetBool("Motion", true);
-		}
+public void moveForward(){
+	//Debug.Log("moveForward() - bot");
+	if(tileDetect(direction())){
+		// set target position to next tile in front
+		pos += new Vector3 (direction().x, direction().y, 0.0f) * 21f;
+		anim.SetBool("Motion", true);
 	}
+}
+
+// SECURE MODE: Check if robot can safely move forward
+public bool canMoveForward(){
+	return tileDetect(direction());
+}
+
+// SECURE MODE: Check if robot can safely pick up
+public bool canPickUp(){
+	return packageCol; // Returns true if package is in range
+}
+
+// SECURE MODE: Check if robot is holding something
+public bool isHoldingPackage(){
+	return pickedUp;
+}
 
 	// item detection
 	bool tileDetect(Vector2 dir){
